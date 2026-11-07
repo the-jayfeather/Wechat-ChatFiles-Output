@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>微信聊天记录读取器</title>
+<style>
+  :root{
+    --bg:#ededed; --side:#f7f7f7; --top:#f7f7f7; --line:#e2e2e2;
+    --mine:#95ec69; --other:#fff; --text:#1a1a1a; --sub:#8a8a8a;
+    --accent:#07c160; --chip:#f0f0f0; --chip-text:#555; --hover:#ececec; --on:#dedede;
+    --day:#dadada; --card:#fff; --shadow:0 1px 2px rgba(0,0,0,.06);
+  }
+  html[data-theme="dark"]{
+    --bg:#111315; --side:#181a1c; --top:#181a1c; --line:#2a2d30;
+    --mine:#2f5d3a; --other:#24272a; --text:#e6e6e6; --sub:#8b9095;
+    --accent:#3ecf7a; --chip:#2c3033; --chip-text:#b9bec3; --hover:#222528; --on:#2c3033;
+    --day:#33383c; --card:#24272a; --shadow:0 1px 3px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font:14px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:var(--text);
+       background:var(--bg);overflow:hidden;transition:background .2s,color .2s}
+  #app{display:flex;height:100%}
+  aside{width:300px;min-width:240px;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column}
+  .side-hd{padding:14px 16px 8px;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:baseline}
+  .side-hd small{color:var(--sub);font-weight:400}
+  .side-search{margin:0 12px 8px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text);outline:none;font-size:13px}
+  .side-search:focus{border-color:var(--accent)}
+  #convs{flex:1;overflow:auto}
+  .conv{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+  .conv:hover{background:var(--hover)}
+  .conv.on{background:var(--on)}
+  .conv .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .conv .meta{color:var(--sub);font-size:11px;white-space:nowrap}
+  .badge{background:var(--chip);color:var(--chip-text);border-radius:9px;padding:0 6px;font-size:11px}
+  main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .top{height:52px;flex:0 0 52px;background:var(--top);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 18px}
+  .top h1{font-size:15px;margin:0;font-weight:600;white-space:nowrap}
+  .top .info{color:var(--sub);font-size:12px;white-space:nowrap}
+  .top .spacer{flex:1}
+  .top input.search{padding:6px 10px;border:1px solid var(--line);border-radius:6px;width:220px;outline:none;font-size:13px;background:var(--card);color:var(--text)}
+  .top input.search:focus{border-color:var(--accent)}
+  .iconbtn{background:var(--card);border:1px solid var(--line);color:var(--text);border-radius:6px;
+           width:34px;height:30px;cursor:pointer;font-size:15px;line-height:1}
+  .iconbtn:hover{border-color:var(--accent)}
+  #msgs{flex:1;overflow-y:auto;padding:18px 20px 40px}
+  .empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--sub);gap:14px}
+  .empty b{color:var(--text);font-size:16px}
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:26px 34px;background:var(--card);text-align:center;cursor:pointer}
+  .drop.hover{border-color:var(--accent)}
+  .day{text-align:center;margin:16px 0 12px}
+  .day span{background:var(--day);color:#fff;font-size:11px;padding:2px 8px;border-radius:4px}
+  .timesep{text-align:center;color:var(--sub);font-size:11px;margin:14px 0 2px}
+  .quote{border-left:3px solid var(--line);background:rgba(0,0,0,.045);border-radius:4px;padding:6px 9px;
+         margin-bottom:6px;font-size:12.5px;color:var(--sub);max-height:74px;overflow:hidden;cursor:pointer}
+  html[data-theme="dark"] .quote{background:rgba(255,255,255,.07)}
+  .quote:hover{border-left-color:var(--accent);color:var(--text)}
+  .quote .qname{color:var(--accent);margin-right:4px}
+  .qmain{margin-top:2px}
+  .row.flash .bubble{outline:2px solid var(--accent);outline-offset:2px}
+  .row{display:flex;margin:9px 0;gap:8px;align-items:flex-start}
+  .row.mine{flex-direction:row-reverse}
+  .avatar{width:32px;height:32px;flex:0 0 32px;border-radius:5px;background:var(--chip);color:var(--chip-text);
+          display:flex;align-items:center;justify-content:center;font-size:13px;overflow:hidden;user-select:none}
+  .avatar img{width:100%;height:100%;object-fit:cover;display:block}
+  .body{max-width:min(64%,640px);min-width:0}
+  .who{font-size:11px;color:var(--sub);margin:0 2px 3px}
+  .row.mine .who{text-align:right}
+  .bubble{background:var(--other);border-radius:6px;padding:8px 11px;word-wrap:break-word;white-space:normal;box-shadow:var(--shadow)}
+  .row.mine .bubble{background:var(--mine);color:#10230f}
+  html[data-theme="dark"] .row.mine .bubble{color:#e9f5ea}
+  .sys{text-align:center;margin:10px 0;color:var(--sub);font-size:12px}
+  .sys span{background:var(--chip);border-radius:4px;padding:2px 8px;display:inline-block;max-width:80%}
+  .row.mine .bubble.cardwrap{background:transparent;box-shadow:none;padding:0}
+  .chip{display:inline-flex;align-items:center;gap:6px;color:var(--chip-text);background:var(--chip);border-radius:4px;padding:3px 8px;font-size:13px}
+  .thumb{max-width:220px;max-height:280px;width:auto;height:auto;border-radius:4px;display:block;object-fit:contain;background:rgba(0,0,0,.04)}
+  .matchable{cursor:pointer;border-bottom:1px dashed var(--sub)}
+  .matchable:hover{color:var(--accent);border-bottom-color:var(--accent)}
+  .emoji{height:1.4em;vertical-align:-0.32em;margin:0 1px;pointer-events:none}
+  .thumb.matchable{cursor:pointer}
+  .thumb.matchable:hover{outline:2px dashed var(--accent);outline-offset:2px}
+  .modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99}
+  .modal{background:var(--card);color:var(--text);border-radius:10px;padding:20px;max-width:430px;
+         box-shadow:0 10px 40px rgba(0,0,0,.4)}
+  .mtxt{white-space:pre-wrap;line-height:1.65;font-size:14px}
+  .mbtns{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+  .mbtns button{padding:7px 16px;border-radius:6px;border:1px solid var(--line);background:transparent;
+                color:var(--text);cursor:pointer;font-size:13px}
+  .mbtns .myes{background:var(--accent);border-color:var(--accent);color:#fff}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:rgba(20,20,20,.92);
+         color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:100;max-width:80vw}
+  /* link card */
+  .card{width:300px;max-width:100%;background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--shadow)}
+  .card .ct{font-weight:600;font-size:14px;padding:10px 12px 4px;line-height:1.4}
+  .card .cd{color:var(--sub);font-size:12px;padding:0 12px 8px;max-height:38px;overflow:hidden}
+  .card .cf{display:flex;align-items:center;gap:6px;border-top:1px solid var(--line);padding:6px 12px;font-size:11px;color:var(--sub)}
+  .card .cico{width:14px;height:14px;border-radius:2px;background:var(--accent);opacity:.8}
+  mark{background:#ffe58f;color:#000;padding:0 1px;border-radius:2px}
+  html[data-theme="dark"] mark{background:#8a6d00;color:#fff}
+  .more{display:block;margin:6px auto 14px;background:var(--card);border:1px solid var(--line);color:var(--chip-text);
+        border-radius:14px;padding:5px 14px;font-size:12px;cursor:pointer}
+  .more:hover{border-color:var(--accent);color:var(--accent)}
+  @media (max-width:720px){aside{width:200px;min-width:160px}.top input.search{width:120px}}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="side-hd">会话 <small id="sum"></small></div>
+    <input id="filter" class="side-search" placeholder="筛选会话…">
+    <div id="convs"></div>
+  </aside>
+  <main>
+    <div class="top">
+      <h1 id="title">微信聊天记录</h1>
+      <span class="info" id="info"></span>
+      <span class="spacer"></span>
+      <input id="search" class="search" placeholder="搜索当前会话…" disabled>
+      <button class="iconbtn" id="theme" title="切换深色模式">◐</button>
+    </div>
+    <div id="msgs">
+      <div class="empty" id="welcome">
+        <b>微信聊天记录读取器</b>
+        <div>全部本地解析，不联网、不上传</div>
+        <div class="drop" id="drop">把 <code>data.json</code> 拖到这里，或点击选择
+          <input type="file" id="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="data.bundle.js"></script>
+<script src="matches.js"></script>
+<script src="emoji.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const params = new URLSearchParams(location.search);
+  const savedTheme = params.get("theme") || localStorage.getItem("wxview-theme") || "light";
+  document.documentElement.dataset.theme = savedTheme;
+  $("#theme").textContent = savedTheme === "dark" ? "☀" : "☾";
+
+  let DATA = null, CUR = null, START = 0, QUERY = "";
+  let SELF = new Set();
+  const PAGE = 120;
+
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const initial = n => (n && n !== "系统") ? n.slice(0, 1).toUpperCase() : "?";
+
+  $("#theme").addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("wxview-theme", next);
+    $("#theme").textContent = next === "dark" ? "☀" : "☾";
+  });
+
+  function load(file) {
+    const fr = new FileReader();
+    fr.onload = () => { try { loadData(JSON.parse(fr.result)); } catch (e) { alert("读取失败：" + e.message); } };
+    fr.readAsText(file, "utf-8");
+  }
+
+  function loadData(d) {
+    if (!d.messages || !d.conversations) throw new Error("不是本工具导出的 JSON");
+    DATA = d;
+    SELF = new Set([d.account || "", d.self_id || ""]);
+    if (d.account) SELF.add(String(d.account).replace(/_[0-9a-fA-F]{4}$/, ""));
+    SELF.delete("");
+    $("#sum").textContent = d.conversations.length + " 会话 / " +
+      d.conversations.reduce((a, c) => a + c.count, 0) + " 条";
+    $("#title").textContent = (d.self_name || d.account || "微信聊天记录") + " 的聊天记录";
+    $("#search").disabled = false;
+    renderConvs();
+    $("#welcome")?.remove();
+    $("#msgs").innerHTML = "";
+    const want = params.get("conv");
+    const pick = (want && d.conversations.find(c => c.id === want)) || d.conversations.find(c => !c.is_group) || d.conversations[0];
+    if (pick) openConv(pick.id);
+  }
+
+  function renderConvs() {
+    const q = $("#filter").value.trim().toLowerCase();
+    const list = DATA.conversations
+      .filter(c => !q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q))
+      .sort((a, b) => (b.last || "").localeCompare(a.last || ""));
+    $("#convs").innerHTML = list.map(c => `
+      <div class="conv${CUR && CUR.id === c.id ? " on" : ""}" data-id="${esc(c.id)}">
+        <div class="nm"><b>${esc(c.name)}</b><br><span class="meta">${esc(c.last.slice(0, 16))}</span></div>
+        <span class="badge">${c.count}</span>
+      </div>`).join("") || `<div style="padding:20px;color:var(--sub)">没有匹配的会话</div>`;
+  }
+
+  function openConv(id) {
+    CUR = DATA.conversations.find(c => c.id === id);
+    QUERY = ""; $("#search").value = "";
+    const n = DATA.messages[id].length;
+    START = Math.max(0, n - PAGE);
+    $("#title").textContent = CUR.name + (CUR.is_group ? "（群聊）" : "");
+    $("#info").textContent = `${CUR.count} 条 · ${CUR.first.slice(0, 10)} ~ ${CUR.last.slice(0, 10)}`;
+    renderConvs();
+    render();
+  }
+
+  function linkCard(m, mk) {
+    let host = "";
+    try { host = new URL(m.url).hostname; } catch (e) { host = m.appname || ""; }
+    const title = m.title || m.des || m.appname || "[链接]";
+    if (!m.url) {
+      return `<div class="card matchable" data-match="${esc(mk)}" title="点击手动匹配文件">
+        <div class="ct">${esc(title)}</div>
+        ${m.des ? `<div class="cd">${esc(m.des)}</div>` : ""}
+        <div class="cf"><span class="cico"></span>${esc(host || "链接")} · 待匹配</div>
+      </div>`;
+    }
+    return `<div class="card" onclick="window.open('${esc(m.url)}','_blank','noopener')" style="cursor:pointer">
+      <div class="ct">${esc(title)}</div>
+      ${m.des ? `<div class="cd">${esc(m.des)}</div>` : ""}
+      <div class="cf"><span class="cico"></span>${esc(host || "链接")}</div>
+    </div>`;
+  }
+
+  const EMOJI = window.__WX_EMOJI__ || {};
+  function emojiHTML(escaped) {
+    let out = escaped.replace(/\n/g, "<br>");
+    if (!Object.keys(EMOJI).length) return out;
+    return out.replace(/\[[^\[\]<>]{1,10}\]/g, code => {
+      const p = EMOJI[code];
+      return p ? `<img class="emoji" src="${esc(p)}" alt="${esc(code)}">` : code;
+    });
+  }
+
+  function quoteHTML(q) {
+    const nm = q.name ? `<span class="qname">${esc(q.name)}：</span>` : "";
+    return `<div class="quote" data-qid="${esc(q.sid || "")}" title="点击跳到被引用的消息">${nm}<span class="qtext">${esc(q.text || "[消息]")}</span></div>`;
+  }
+
+  function msgHTML(m) {
+    if (m.type === "system") return `<div class="sys"><span>${esc(m.text || "系统消息")}</span></div>`;
+    const mk = (CUR ? CUR.id : "") + "#" + m.id;
+    const mine = SELF.has(m.sender) || m.mine === true;
+    const src = m.src || MATCH[mk];
+    const who = mine ? (DATA.self_name || "我") : (m.sender_name || m.sender);
+    const av = (DATA.avatars || {})[m.sender];
+    const avatar = av
+      ? `<div class="avatar"><img src="${esc(av)}" alt="" onerror="this.parentNode.textContent='${esc(initial(who))}'"></div>`
+      : `<div class="avatar">${esc(mine ? "我" : initial(who))}</div>`;
+
+    let inner;
+    if (m.type === "quote") inner = quoteHTML(m.q || {}) + `<div class="qmain">${emojiHTML(esc(m.text || ""))}</div>`;
+    else if (m.type === "link") inner = linkCard(m, mk);
+    else if (m.type === "image") inner = src
+      ? `<img class="thumb matchable" src="${esc(src)}" alt="图片" width="${m.w||""}" height="${m.h||""}"
+              data-match="${esc(mk)}" data-view="${esc(src)}" title="点击：查看原图 / 重新匹配">`
+      : `<span class="chip matchable" data-match="${esc(mk)}" title="点击手动匹配文件">🖼 图片${m.w ? " " + m.w + "×" + m.h : ""}</span>`;
+    else if (m.type === "sticker") inner = src
+      ? `<img class="thumb matchable" src="${esc(src)}" alt="表情" style="max-width:140px;max-height:140px"
+              data-match="${esc(mk)}" data-view="${esc(src)}" title="点击：查看 / 重新匹配">`
+      : `<span class="chip matchable" data-match="${esc(mk)}" title="点击手动匹配文件">🙂 表情</span>`;
+    else if (m.type === "video") inner = src
+      ? `<img class="thumb matchable" src="${esc(src)}" alt="视频封面"
+              data-match="${esc(mk)}" data-view="${esc(src)}" title="点击：查看封面 / 重新匹配">`
+      : `<span class="chip matchable" data-match="${esc(mk)}" title="点击手动匹配文件">🎬 视频${m.w ? " " + m.w + "×" + m.h : ""}${m.len ? " · " + m.len + "s" : ""}</span>`;
+    else if (m.type === "voice") inner = src
+      ? `<span class="chip matchable" data-match="${esc(mk)}" data-view="${esc(src)}">🎤 语音</span>`
+      : `<span class="chip matchable" data-match="${esc(mk)}" title="点击手动匹配文件">🎤 语音</span>`;
+    else if (m.type === "voip") inner = `<span class="chip">📞 通话</span>`;
+    else if (m.type === "card") inner = `<span class="chip">👤 ${esc(m.text || "名片")}</span>`;
+    else if (m.type === "location") inner = `<span class="chip">📍 位置</span>`;
+    else {
+      let t = esc(m.text || "");
+      if (QUERY) {
+        const re = new RegExp("(" + QUERY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
+        t = t.replace(re, "<mark>$1</mark>");
+      }
+      inner = emojiHTML(t);
+    }
+
+    return `<div class="row ${mine ? "mine" : ""}" data-sid="${esc(m.sid || "")}">${avatar}
+      <div class="body"><div class="who">${esc(who)} · ${esc(m.time.slice(5, 16))}</div>
+      <div class="bubble ${(m.type === "link" || m.type === "image") ? "cardwrap" : ""}">${inner}</div></div></div>`;
+  }
+
+  function render() {
+    if (!CUR) return;
+    const msgs = DATA.messages[CUR.id];
+    let slice, html = "";
+    if (QUERY) {
+      const hit = msgs.filter(m => (m.text || "").toLowerCase().includes(QUERY.toLowerCase()));
+      slice = hit.slice(0, 400);
+      html = `<div class="sys"><span>命中 ${hit.length} 条${hit.length > 400 ? "（只显示前 400）" : ""}</span></div>`;
+    } else {
+      slice = msgs.slice(START);
+    }
+    let lastDay = null, prevTs = null;
+    for (const m of slice) {
+      const d = m.time.slice(0, 10);
+      if (d !== lastDay) { html += `<div class="day"><span>${d}</span></div>`; lastDay = d; prevTs = null; }
+      if (!QUERY && prevTs !== null && m.ts - prevTs > 300) {
+        html += `<div class="timesep">${esc(m.time.slice(11, 16))}</div>`;
+      }
+      html += msgHTML(m);
+      prevTs = m.ts;
+    }
+    if (!QUERY && START > 0) html = `<button class="more" id="more">↑ 加载更早的 ${Math.min(PAGE, START)} 条</button>` + html;
+    const box = $("#msgs");
+    box.innerHTML = html;
+    if (!QUERY) box.scrollTop = box.scrollHeight;
+    $("#more")?.addEventListener("click", () => {
+      const h = box.scrollHeight;
+      START = Math.max(0, START - PAGE);
+      render();
+      box.scrollTop = box.scrollHeight - h;
+    });
+  }
+
+  // ---------------- 手动匹配文件 ----------------
+  const MATCH = Object.assign({}, window.__WX_MATCH__ || {});
+  const FILE_DB = "wxview-fs";
+  let dirHandle = null;
+
+  function idb() {
+    return new Promise((res, rej) => {
+      let r;
+      try { r = indexedDB.open(FILE_DB, 1); } catch (e) { return rej(e); }
+      r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains("h")) r.result.createObjectStore("h"); };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  }
+  function idbGet(k) {
+    return idb().then(d => new Promise(res => {
+      const t = d.transaction("h", "readonly").objectStore("h").get(k);
+      t.onsuccess = () => res(t.result || null); t.onerror = () => res(null);
+    })).catch(() => null);
+  }
+  function idbSet(k, v) {
+    return idb().then(d => new Promise(res => {
+      const t = d.transaction("h", "readwrite").objectStore("h").put(v, k);
+      t.onsuccess = () => res(); t.onerror = () => res();
+    })).catch(() => {});
+  }
+
+  function toast(msg, ms = 3200) {
+    const t = document.createElement("div");
+    t.className = "toast"; t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), ms);
+  }
+
+  function dialog(text, buttons) {
+    return new Promise(res => {
+      const ov = document.createElement("div");
+      ov.className = "modal-ov";
+      ov.innerHTML = `<div class="modal"><div class="mtxt"></div><div class="mbtns"></div></div>`;
+      ov.querySelector(".mtxt").textContent = text;
+      const bar = ov.querySelector(".mbtns");
+      buttons.forEach(b => {
+        const el = document.createElement("button");
+        el.textContent = b.label;
+        if (b.primary) el.className = "myes";
+        el.onclick = () => { ov.remove(); res(b.key); };
+        bar.appendChild(el);
+      });
+      document.body.appendChild(ov);
+      ov.onclick = e => { if (e.target === ov) { ov.remove(); res("cancel"); } };
+    });
+  }
+
+  function pickFile() {
+    return new Promise(res => {
+      const i = document.createElement("input");
+      i.type = "file";
+      i.accept = "image/*,video/*,audio/*,.gif,.webp,.silk,.amr";
+      i.style.display = "none";
+      i.onchange = () => { const f = i.files && i.files[0]; i.remove(); res(f || null); };
+      document.body.appendChild(i);
+      i.click();
+    });
+  }
+
+  const extOf = name => (name.match(/\.[A-Za-z0-9]{1,6}$/) || [".bin"])[0].toLowerCase();
+
+  function targetFor(m, fileName) {
+    const ext = extOf(fileName);
+    const base = m.md5 || ("m" + m.id);
+    if (m.type === "sticker") return "media/stickers/" + base + ext;
+    if (m.type === "video") return "media/video/" + base + ext;
+    if (m.type === "voice") return "media/voice/" + base + ext;
+    if (m.type === "link") return "media/manual/" + base + ext;
+    return "media/img/" + base + ext;
+  }
+
+  function pageFileName() {
+    try {
+      const p = decodeURIComponent(location.pathname || "");
+      return p.split("/").pop() || "聊天记录.html";
+    } catch (e) { return "聊天记录.html"; }
+  }
+
+  async function isPageDir(h) {
+    const names = [pageFileName(), "聊天记录.html", "index.html"];
+    for (const n of names) {
+      try { await h.getFileHandle(n); return true; } catch (e) { /* next */ }
+    }
+    return false;
+  }
+
+  async function ensureDir() {
+    if (!window.showDirectoryPicker) return null;
+    const local = location.protocol === "file:";
+
+    if (dirHandle) {
+      try {
+        let p = await dirHandle.queryPermission({ mode: "readwrite" });
+        if (p === "prompt") p = await dirHandle.requestPermission({ mode: "readwrite" });
+        if (p === "granted" && (!local || await isPageDir(dirHandle))) return dirHandle;
+      } catch (e) { /* 句柄失效，重新选择 */ }
+    }
+
+    for (let i = 0; i < 3; i++) {
+      let h;
+      try {
+        h = await window.showDirectoryPicker({ mode: "readwrite", id: "wxview-export" });
+      } catch (e) {
+        return null;
+      }
+      if (!local || await isPageDir(h)) {
+        dirHandle = h;
+        await idbSet("dir", h);
+        return h;
+      }
+      await dialog(
+        `选中的文件夹里没有「${pageFileName()}」。\n\n` +
+        `请选择网页文件所在的那个文件夹，\n文件会被复制到它的 media 子目录里。`,
+        [{ key: "ok", label: "重新选择", primary: true }]);
+    }
+    return null;
+  }
+
+  async function writeFileToDir(dir, rel, file) {
+    const parts = rel.split("/");
+    let d = dir;
+    for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true });
+    const fh = await d.getFileHandle(parts[parts.length - 1], { create: true });
+    const w = await fh.createWritable();
+    await w.write(file);
+    await w.close();
+  }
+
+  async function persistMatches(dir) {
+    const fh = await dir.getFileHandle("matches.js", { create: true });
+    const w = await fh.createWritable();
+    await w.write("window.__WX_MATCH__=" + JSON.stringify(MATCH) + ";");
+    await w.close();
+  }
+
+  async function startMatch(key, viewSrc) {
+    if (!DATA) return;
+    const sep = key.lastIndexOf("#");
+    const convId = key.slice(0, sep), id = key.slice(sep + 1);
+    const m = (DATA.messages[convId] || []).find(x => String(x.id) === id);
+    if (!m) return;
+
+    const head = viewSrc
+      ? "这条消息已经有文件。\n是否用本地文件替换它？\n\n新文件会复制到网页所在目录的 media 下。"
+      : "这条消息没有对应的文件。\n是否自己挑一个本地文件补上？\n\n选中后会复制到网页所在目录的 media 下，并记录匹配关系。";
+    const btns = viewSrc
+      ? [{ key: "view", label: "查看原图" }, { key: "cancel", label: "取消" },
+         { key: "match", label: "重新匹配", primary: true }]
+      : [{ key: "cancel", label: "取消" }, { key: "match", label: "选择文件", primary: true }];
+    const choice = await dialog(head, btns);
+    if (choice === "view") { window.open(viewSrc, "_blank", "noopener"); return; }
+    if (choice !== "match") return;
+
+    // 先要目录权限（必须在用户手势的有效期内），再选文件
+    let dir = null;
+    if (window.showDirectoryPicker) {
+      dir = await ensureDir();
+      if (!dir) { toast("未选择目录，已取消"); return; }
+    }
+
+    const file = await pickFile();
+    if (!file) return;
+
+    const rel = targetFor(m, file.name);
+
+    if (dir) {
+      try {
+        await writeFileToDir(dir, rel, file);
+        MATCH[key] = rel + "?t=" + Date.now();
+        await persistMatches(dir);
+        render();
+        toast("已复制到 " + rel);
+        return;
+      } catch (e) {
+        console.warn("写入失败", e);
+      }
+    }
+
+    MATCH[key] = URL.createObjectURL(file);
+    render();
+    toast("当前环境无法直接写入目录，已临时显示。请手动另存为：" + rel, 8000);
+  }
+
+  function jumpToSid(sid) {
+    if (!CUR || !sid) { toast("这条引用没有可定位的消息"); return; }
+    const list = DATA.messages[CUR.id] || [];
+    const idx = list.findIndex(x => String(x.sid) === String(sid));
+    if (idx < 0) { toast("被引用的消息不在当前会话中（可能已被清理）"); return; }
+    if (idx < START) { START = Math.max(0, idx - 10); render(); }
+    setTimeout(() => {
+      const el = document.querySelector(`.row[data-sid="${CSS.escape(String(sid))}"]`);
+      if (!el) { toast("定位失败，请重试"); return; }
+      el.scrollIntoView({ block: "center" });
+      el.classList.add("flash");
+      setTimeout(() => el.classList.remove("flash"), 1600);
+    }, 80);
+  }
+
+  $("#msgs").addEventListener("click", e => {
+    const q = e.target.closest("[data-qid]");
+    if (q) { e.preventDefault(); e.stopPropagation(); jumpToSid(q.dataset.qid); return; }
+    const el = e.target.closest("[data-match]");
+    if (el) { e.preventDefault(); e.stopPropagation(); startMatch(el.dataset.match, el.dataset.view || null); }
+  }, true);
+
+  idbGet("dir").then(h => { if (h) dirHandle = h; }).catch(() => {});
+
+
+  $("#convs").addEventListener("click", e => {
+    const el = e.target.closest(".conv"); if (el && DATA) openConv(el.dataset.id);
+  });
+  $("#filter").addEventListener("input", () => DATA && renderConvs());
+  $("#search").addEventListener("input", e => { QUERY = e.target.value.trim(); if (CUR) render(); });
+  $("#file").addEventListener("change", e => e.target.files[0] && load(e.target.files[0]));
+  const drop = $("#drop");
+  drop.addEventListener("click", () => $("#file").click());
+  ["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("hover"); }));
+  ["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("hover"); }));
+  drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) load(f); });
+
+  // 同目录自动加载
+  if (window.__WX_DATA__) loadData(window.__WX_DATA__);
+  else fetch("./data.json").then(r => r.ok ? r.json() : null).then(d => { if (d) loadData(d); }).catch(() => {});
+})();
+</script>
+</body>
+</html>
